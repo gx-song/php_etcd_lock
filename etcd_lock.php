@@ -1,6 +1,6 @@
 <?php
-	function get_lock($etcd_endpoint,$lock_key,$ttl)
-	{
+	function get_lock($etcd_endpoint,$lock_key,$ttl,$flag)
+	{	//var_dump($flag);die();
 		if (!($etcd_endpoint and  $lock_key)) {
 			return -1;
 		}
@@ -12,7 +12,11 @@
 			"value" => $lock_key,
 			"ttl" => $ttl
 		);
-		$url = $etcd_endpoint.'/v2/lock_keys/'.$lock_key.'?prevExist=false';
+		if ($flag == 1) {
+			$url = $etcd_endpoint.'/v2/keys/lock'.$lock_key;
+		}else{
+			$url = $etcd_endpoint.'/v2/keys/lock'.$lock_key.'?prevExist=false';
+		}
 		$curl_h = curl_init($url);
 		curl_setopt($curl_h,CURLOPT_CUSTOMREQUEST,'PUT');
 		curl_setopt($curl_h,CURLOPT_RETURNTRANSFER,true);
@@ -29,6 +33,11 @@
 
 		return $output;
 	}
+	function exten_lock($signo)
+	{
+		pcntl_alarm(2);
+		$ret = get_lock("http://127.0.0.1:2379","body",30,1);
+	}
 	for ($i = 0;$i < 10;$i ++) {
 		switch(pcntl_fork()) {
 		case	-1:
@@ -36,12 +45,19 @@
 			break;
 		case	0:
 			//printf("child pid:%s\t",posix_getpid());
-			$ret = get_lock("http://172.17.0.1:2379","body",3);
+			$ret = get_lock("http://127.0.0.1:2379","body",30,0);
 			//var_dump($ret);
 			$json = json_decode($ret);
 			if (isset($json->action) && $json->action == "create") {
 				printf("child pid:%s\tget lock!\n",
 					posix_getpid());
+				declare(ticks=1);
+				pcntl_signal(SIGALRM,"exten_lock",true);
+				pcntl_alarm(2);
+				for($i=0;$i<10;$i++){
+					echo "$i\n";
+					sleep(3);
+				}
 			}else if (isset($json->errorCode)) {
 				printf("chinld pid:%s\tget lock fail!\n",
 					posix_getpid());
